@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>রক্তের টান | প্রফেশনাল অ্যাডমিন প্যানেল</title>
+    <!-- Tailwind CSS for Styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & Libraries -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body { font-family: 'Hind Siliguri', sans-serif; }
+        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+        .gradient-bg { background: linear-gradient(135deg, #fef2f2 0%, #ffffff 100%); }
+        .sidebar-active { background: #dc2626; color: white; box-shadow: 0 10px 15px -3px rgba(220, 38, 38, 0.3); }
+        .animate-fade-in { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen">
+    <div id="root"></div>
+
+    <script type="module" typeof="babel">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, doc, collection, onSnapshot, updateDoc, setDoc, getDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // Your Firebase Config
+        const firebaseConfig = {
+            apiKey: "AIzaSyDMHgHancA7i6lg6iNS9aF1-ezVCCauIvA",
+            authDomain: "rokter-tan.firebaseapp.com",
+            projectId: "rokter-tan",
+            storageBucket: "rokter-tan.firebasestorage.app",
+            messagingSenderId: "516974795629",
+            appId: "1:516974795629:web:8e1abdfa2d7d0f83201864",
+            measurementId: "G-73NB064BD8"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = "rokter-tan-v1"; // Firestore Base Path
+
+        const { useState, useEffect } = React;
+
+        function App() {
+            const [user, setUser] = useState(null);
+            const [isLocked, setIsLocked] = useState(true);
+            const [activeTab, setActiveTab] = useState('dashboard');
+            const [requests, setRequests] = useState([]);
+            const [donors, setDonors] = useState([]);
+            const [adminPassword, setAdminPassword] = useState('123456');
+            const [searchUid, setSearchUid] = useState('');
+            const [searchResult, setSearchResult] = useState(null);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                const unsubscribeAuth = onAuthStateChanged(auth, async (u) => {
+                    if (u) {
+                        setUser(u);
+                        loadInitialData();
+                    } else {
+                        signInAnonymously(auth);
+                    }
+                });
+                return () => unsubscribeAuth();
+            }, []);
+
+            const loadInitialData = async () => {
+                // Admin Settings Fetch
+                const adminRef = doc(db, 'artifacts', appId, 'public', 'data', 'admin_settings');
+                onSnapshot(adminRef, (snap) => {
+                    if (snap.exists()) setAdminPassword(snap.data().adminPassword);
+                    else setDoc(adminRef, { adminPassword: '123456' });
+                    setLoading(false);
+                });
+
+                // Requests Listener
+                onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'blood_requests'), (snap) => {
+                    setRequests(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                });
+
+                // Donors Listener
+                onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'donors'), (snap) => {
+                    setDonors(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                });
+            };
+
+            const handleStatusChange = async (id, newStatus) => {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'blood_requests', id);
+                await updateDoc(docRef, { status: newStatus });
+            };
+
+            const changePassword = async (newPass) => {
+                const adminRef = doc(db, 'artifacts', appId, 'public', 'data', 'admin_settings');
+                await updateDoc(adminRef, { adminPassword: newPass });
+                alert('পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে!');
+            };
+
+            if (loading) return (
+                <div className="h-screen flex items-center justify-center">
+                    <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+                </div>
+            );
+
+            if (isLocked) return <LoginScreen onLogin={(p) => p === adminPassword ? setIsLocked(false) : alert('ভুল পাসওয়ার্ড')} />;
+
+            return (
+                <div className="flex flex-col lg:flex-row min-h-screen">
+                    {/* Sidebar */}
+                    <aside className="w-full lg:w-72 bg-white border-r border-slate-200 p-6 flex flex-col gap-8 shadow-sm z-20">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-red-600 rounded-xl text-white">
+                                <i data-lucide="droplet"></i>
+                            </div>
+                            <h1 className="text-2xl font-black text-slate-800 tracking-tight">রক্তের টান</h1>
+                        </div>
+                        
+                        <nav className="flex flex-col gap-2">
+                            <MenuButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon="layout-dashboard" label="ড্যাশবোর্ড" />
+                            <MenuButton active={activeTab === 'requests'} onClick={() => setActiveTab('requests')} icon="clipboard-list" label="রক্তের রিকোয়েস্ট" />
+                            <MenuButton active={activeTab === 'donors'} onClick={() => setActiveTab('donors')} icon="users" label="দাতা ব্যবস্থাপনা" />
+                            <MenuButton active={activeTab === 'search'} onClick={() => setActiveTab('search')} icon="search" label="ডোনার প্রোফাইল" />
+                            <MenuButton active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon="shield-check" label="নিরাপত্তা সেটআপ" />
+                        </nav>
+
+                        <button onClick={() => location.reload()} className="mt-auto flex items-center gap-3 p-4 text-slate-400 hover:text-red-600 font-bold transition-all">
+                            <i data-lucide="log-out"></i> লগ আউট
+                        </button>
+                    </aside>
+
+                    {/* Main Content */}
+                    <main className="flex-1 p-6 lg:p-10 overflow-x-hidden">
+                        {activeTab === 'dashboard' && <Dashboard requests={requests} donors={donors} />}
+                        {activeTab === 'requests' && <RequestTable requests={requests} onUpdate={handleStatusChange} />}
+                        {activeTab === 'donors' && <DonorList donors={donors} />}
+                        {activeTab === 'search' && <DonorSearch donors={donors} />}
+                        {activeTab === 'settings' && <SecuritySettings currentPass={adminPassword} onSave={changePassword} />}
+                    </main>
+                </div>
+            );
+        }
+
+        // --- UI Components ---
+
+        function LoginScreen({ onLogin }) {
+            const [val, setVal] = useState('');
+            return (
+                <div className="h-screen flex items-center justify-center p-6 bg-red-50">
+                    <div className="bg-white p-10 rounded-[40px] shadow-2xl w-full max-w-md border border-red-100 animate-fade-in">
+                        <div className="w-20 h-20 bg-red-600 text-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-red-200">
+                            <i data-lucide="shield-lock" size="40"></i>
+                        </div>
+                        <h2 className="text-3xl font-black text-slate-800 text-center mb-2">অ্যাডমিন প্রবেশ</h2>
+                        <p className="text-slate-400 font-bold text-center mb-8 uppercase text-xs tracking-widest">Rokter Tan Control Panel</p>
+                        <form onSubmit={(e) => { e.preventDefault(); onLogin(val); }} className="space-y-4">
+                            <input 
+                                type="password" 
+                                className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-red-600 outline-none font-bold text-center text-xl transition-all"
+                                placeholder="পাসওয়ার্ড লিখুন"
+                                value={val}
+                                onChange={(e) => setVal(e.target.value)}
+                                autoFocus
+                            />
+                            <button className="w-full bg-red-600 text-white font-black py-5 rounded-2xl shadow-xl shadow-red-100 hover:bg-red-700 active:scale-95 transition-all">লগইন করুন</button>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        function MenuButton({ active, icon, label, onClick }) {
+            useEffect(() => { lucide.createIcons(); }, [active]);
+            return (
+                <button 
+                    onClick={onClick}
+                    className={`flex items-center gap-4 p-4 rounded-2xl font-bold transition-all ${active ? 'sidebar-active' : 'text-slate-500 hover:bg-slate-100'}`}
+                >
+                    <i data-lucide={icon} size="20"></i>
+                    <span>{label}</span>
+                </button>
+            );
+        }
+
+        function Dashboard({ requests, donors }) {
+            return (
+                <div className="animate-fade-in space-y-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <StatCard color="bg-red-600" icon="droplets" label="মোট রিকোয়েস্ট" value={requests.length} />
+                        <StatCard color="bg-amber-500" icon="clock" label="পেন্ডিং রিকোয়েস্ট" value={requests.filter(r => r.status === 'Pending' || !r.status).length} />
+                        <StatCard color="bg-blue-600" icon="users" label="রেজিস্টার্ড ডোনার" value={donors.length} />
+                        <StatCard color="bg-emerald-500" icon="check-circle" label="সফল ডোনেশন" value={requests.filter(r => r.status === 'Completed').length} />
+                    </div>
+                    
+                    <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
+                        <h3 className="text-xl font-black mb-6 flex items-center gap-3">
+                            <i data-lucide="activity" className="text-red-600"></i> সাম্প্রতিক আপডেট
+                        </h3>
+                        <div className="space-y-4">
+                            {requests.slice(-5).reverse().map((r, i) => (
+                                <div key={i} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-red-600 font-bold border">{r.bloodGroup}</div>
+                                        <div>
+                                            <p className="font-bold text-slate-800">{r.location || 'Unknown'}</p>
+                                            <p className="text-[10px] text-slate-400 font-mono">UID: {r.requesterUid?.substring(0, 10)}...</p>
+                                        </div>
+                                    </div>
+                                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${r.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                        {r.status || 'Pending'}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function StatCard({ color, icon, label, value }) {
+            useEffect(() => { lucide.createIcons(); }, []);
+            return (
+                <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm flex items-center gap-6">
+                    <div className={`w-14 h-14 ${color} text-white rounded-2xl flex items-center justify-center shadow-lg shadow-current/20`}>
+                        <i data-lucide={icon} size="28"></i>
+                    </div>
+                    <div>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{label}</p>
+                        <h4 className="text-3xl font-black text-slate-800">{value}</h4>
+                    </div>
+                </div>
+            );
+        }
+
+        function RequestTable({ requests, onUpdate }) {
+            return (
+                <div className="animate-fade-in bg-white rounded-[32px] shadow-sm border border-slate-100 overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead className="bg-slate-50 border-b border-slate-100">
+                                <tr>
+                                    <th className="p-6 text-xs font-black text-slate-400 uppercase">Blood</th>
+                                    <th className="p-6 text-xs font-black text-slate-400 uppercase">Requester UID</th>
+                                    <th className="p-6 text-xs font-black text-slate-400 uppercase">Location</th>
+                                    <th className="p-6 text-xs font-black text-slate-400 uppercase">Status</th>
+                                    <th className="p-6 text-xs font-black text-slate-400 uppercase text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50">
+                                {requests.map(r => (
+                                    <tr key={r.id} className="hover:bg-slate-50/50 transition-all">
+                                        <td className="p-6 font-black text-red-600 text-xl">{r.bloodGroup}</td>
+                                        <td className="p-6 font-mono text-[10px] text-slate-400">{r.requesterUid}</td>
+                                        <td className="p-6 font-bold text-slate-700 text-sm">{r.location}</td>
+                                        <td className="p-6">
+                                            <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${r.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                {r.status || 'Pending'}
+                                            </span>
+                                        </td>
+                                        <td className="p-6 text-right">
+                                            <select 
+                                                className="bg-slate-100 p-2 rounded-xl text-xs font-bold outline-none cursor-pointer"
+                                                value={r.status || 'Pending'}
+                                                onChange={(e) => onUpdate(r.id, e.target.value)}
+                                            >
+                                                <option value="Pending">Pending</option>
+                                                <option value="Contacted">Contacted</option>
+                                                <option value="Completed">Completed</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        }
+
+        function DonorList({ donors }) {
+            return (
+                <div className="animate-fade-in bg-white rounded-[32px] border border-slate-100 overflow-hidden">
+                    <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-slate-50/30">
+                        <h3 className="font-black text-slate-800 text-xl">রেজিস্টার্ড ডোনার লিস্ট</h3>
+                        <span className="bg-red-600 text-white px-4 py-1.5 rounded-full text-xs font-black shadow-lg shadow-red-100">{donors.length} জন</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 p-6 gap-6">
+                        {donors.map(d => (
+                            <div key={d.id} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-red-600 font-black text-lg border">{d.bloodGroup}</div>
+                                    <div>
+                                        <p className="font-bold text-slate-800 text-sm leading-tight">{d.name || 'Anonymous'}</p>
+                                        <p className="text-[10px] text-slate-400 font-mono mt-1">{d.id.substring(0,12)}...</p>
+                                    </div>
+                                </div>
+                                <div className={`w-3 h-3 rounded-full ${d.isAvailable ? 'bg-green-500' : 'bg-slate-300'} shadow-sm`}></div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        function DonorSearch({ donors }) {
+            const [id, setId] = useState('');
+            const [result, setResult] = useState(null);
+
+            const handleSearch = () => {
+                const found = donors.find(d => d.id === id || d.uid === id);
+                if (found) setResult(found);
+                else alert('পাওয়া যায়নি!');
+            };
+
+            return (
+                <div className="animate-fade-in max-w-2xl mx-auto space-y-8">
+                    <div className="bg-white p-10 rounded-[40px] shadow-sm border border-slate-100 text-center">
+                        <h3 className="text-2xl font-black text-slate-800 mb-8">UID প্রোফাইল ইনভেস্টিগেশন</h3>
+                        <div className="flex gap-4">
+                            <input 
+                                className="flex-1 p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-red-600 outline-none font-mono text-sm transition-all"
+                                placeholder="Paste Donor UID Here..."
+                                value={id}
+                                onChange={(e) => setId(e.target.value)}
+                            />
+                            <button onClick={handleSearch} className="bg-slate-900 text-white px-8 rounded-2xl font-bold shadow-lg shadow-slate-200">সার্চ</button>
+                        </div>
+                    </div>
+
+                    {result && (
+                        <div className="bg-white rounded-[40px] shadow-2xl border border-red-50 overflow-hidden animate-fade-in">
+                            <div className="bg-red-600 p-10 text-white flex justify-between items-center">
+                                <div>
+                                    <h4 className="text-3xl font-black mb-1">{result.name}</h4>
+                                    <p className="text-red-100 text-xs font-bold uppercase tracking-widest">রেজিস্টার্ড ব্লাড ডোনার</p>
+                                </div>
+                                <div className="text-5xl font-black bg-white/20 p-4 rounded-3xl backdrop-blur-md">{result.bloodGroup}</div>
+                            </div>
+                            <div className="p-10 grid grid-cols-1 md:grid-cols-2 gap-8">
+                                <InfoBox label="ফোন নাম্বার" val={result.phone || result.phoneNumber} icon="phone" />
+                                <InfoBox label="বর্তমান লোকেশন" val={result.location} icon="map-pin" />
+                                <InfoBox label="শেষ রক্তদানের সময়" val={result.lastDonationDate || 'কখনো নয়'} icon="calendar" />
+                                <InfoBox label="অ্যাভেইলেবিলিটি" val={result.isAvailable ? 'অ্যাভেইলেবল' : 'অ্যাভেইলেবল নেই'} icon="check-square" />
+                            </div>
+                            <div className="p-8 bg-slate-50 border-t flex justify-center">
+                                <a href={`tel:${result.phone}`} className="bg-green-600 text-white px-10 py-4 rounded-2xl font-black flex items-center gap-3 shadow-xl shadow-green-100 hover:bg-green-700 transition-all">
+                                    <i data-lucide="phone-call"></i> সরাসরি কল দিন
+                                </a>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        function InfoBox({ label, val, icon }) {
+            useEffect(() => { lucide.createIcons(); }, []);
+            return (
+                <div className="flex items-start gap-4">
+                    <div className="p-3 bg-slate-50 rounded-xl text-red-600 border"><i data-lucide={icon} size="20"></i></div>
+                    <div>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{label}</p>
+                        <p className="text-lg font-black text-slate-800">{val || 'Data Not Found'}</p>
+                    </div>
+                </div>
+            );
+        }
+
+        function SecuritySettings({ currentPass, onSave }) {
+            const [val, setVal] = useState('');
+            return (
+                <div className="animate-fade-in max-w-lg mx-auto bg-white p-10 rounded-[40px] shadow-sm border border-slate-100 text-center">
+                    <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                        <i data-lucide="key-round" size="32"></i>
+                    </div>
+                    <h3 className="text-2xl font-black text-slate-800 mb-2">অ্যাডমিন পাসওয়ার্ড সেটআপ</h3>
+                    <p className="text-slate-400 font-bold text-sm mb-10">প্যানেলের নিরাপত্তা নিশ্চিত করতে শক্তিশালী কোড ব্যবহার করুন</p>
+                    
+                    <div className="space-y-6">
+                        <div className="text-left">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2 mb-2 block">New Admin Password</label>
+                            <input 
+                                type="text"
+                                className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-red-600 outline-none font-bold text-center text-xl"
+                                placeholder="নতুন পাসওয়ার্ড দিন"
+                                value={val}
+                                onChange={(e) => setVal(e.target.value)}
+                            />
+                        </div>
+                        <button 
+                            onClick={() => { if(val.length >= 4) { onSave(val); setVal(''); } else alert('মিনিমাম ৪ অক্ষর হতে হবে'); }}
+                            className="w-full bg-slate-900 text-white font-black py-5 rounded-2xl shadow-xl shadow-slate-200 hover:bg-black transition-all"
+                        >
+                            আপডেট করুন
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+
